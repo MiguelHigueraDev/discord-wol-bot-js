@@ -3,6 +3,7 @@ import { Client, GatewayIntentBits, ActivityType } from "discord.js";
 import wol from "wake_on_lan";
 
 const TOKEN = process.env.DISCORD_TOKEN;
+const OWNER_DISCORD_ID = process.env.OWNER_DISCORD_ID;
 
 function parseMacAddress(macStr) {
   if (!macStr || typeof macStr !== "string") {
@@ -48,6 +49,21 @@ client.on("messageCreate", async (message) => {
   }
 
   if (message.content === "!poweron") {
+    // Check if the user is authorized
+    if (!OWNER_DISCORD_ID) {
+      const response = "OWNER_DISCORD_ID environment variable not set!";
+      try {
+        await message.channel.send(response);
+      } catch (err) {
+        console.error("Error sending 'OWNER_DISCORD_ID not set' message:", err);
+      }
+      return;
+    }
+
+    if (message.author.id !== OWNER_DISCORD_ID) {
+      return;
+    }
+
     const macAddressStrEnv = process.env.MAC_ADDRESS;
 
     if (!macAddressStrEnv) {
@@ -90,6 +106,11 @@ client.on("messageCreate", async (message) => {
 async function startBot() {
   if (!TOKEN) {
     console.error("DISCORD_TOKEN environment variable is not set. Exiting.");
+    process.exit(1);
+  }
+
+  if (!OWNER_DISCORD_ID) {
+    console.error("OWNER_DISCORD_ID environment variable is not set. Exiting.");
     process.exit(1);
   }
 
