@@ -1,5 +1,13 @@
 import "dotenv/config";
-import { Client, GatewayIntentBits, ActivityType } from "discord.js";
+import {
+  Client,
+  GatewayIntentBits,
+  ActivityType,
+  ButtonBuilder,
+  ButtonStyle,
+  ActionRowBuilder,
+  MessageFlags,
+} from "discord.js";
 import wol from "wake_on_lan";
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -27,6 +35,45 @@ function parseMacAddress(macStr) {
     }
   }
   return macStr;
+}
+
+async function handlePowerOnCommand(respondFunction) {
+  const macAddressStrEnv = process.env.MAC_ADDRESS;
+
+  if (!macAddressStrEnv) {
+    const response = "MAC_ADDRESS environment variable not set!";
+    try {
+      await respondFunction(response);
+    } catch (err) {
+      console.error("Error sending 'MAC_ADDRESS not set' message:", err);
+    }
+    return;
+  }
+
+  try {
+    const validatedMacAddress = parseMacAddress(macAddressStrEnv);
+
+    wol.wake(validatedMacAddress);
+    const response = `Magic packet sent to ${validatedMacAddress}!`;
+    await respondFunction(response);
+  } catch (e) {
+    console.error("Failed to process power-on command:", e);
+
+    let userErrorMessage;
+    if (e.message.toLowerCase().includes("mac address")) {
+      userErrorMessage = `Invalid MAC address format in environment: '${macAddressStrEnv}'. Error: ${e.message}. Expected format: HH:HH:HH:HH:HH:HH or HH-HH-HH-HH-HH-HH.`;
+    } else {
+      userErrorMessage = `Failed to send magic packet to ${macAddressStrEnv}: ${
+        e.message || e
+      }`;
+    }
+
+    try {
+      await respondFunction(userErrorMessage);
+    } catch (err) {
+      console.error("Error sending error message to Discord:", err);
+    }
+  }
 }
 
 const client = new Client({
@@ -64,42 +111,49 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    const macAddressStrEnv = process.env.MAC_ADDRESS;
+    await handlePowerOnCommand((content) => message.channel.send(content));
+  }
 
-    if (!macAddressStrEnv) {
-      const response = "MAC_ADDRESS environment variable not set!";
+  if (message.content === "!button") {
+    const powerOnButton = new ButtonBuilder()
+      .setCustomId("poweron")
+      .setLabel("Power On")
+      .setStyle(ButtonStyle.Success);
+    const row = new ActionRowBuilder().addComponents(powerOnButton);
+    const response = "Click the button to power on the PC!";
+    try {
+      await message.channel.send({ content: response, components: [row] });
+    } catch (err) {
+      console.error("Error sending button message:", err);
+    }
+  }
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isButton()) return;
+
+  if (interaction.customId === "poweron") {
+    // Check if the user is authorized
+    if (!OWNER_DISCORD_ID) {
+      const response = "OWNER_DISCORD_ID environment variable not set!";
       try {
-        await message.channel.send(response);
+        await interaction.reply({
+          content: response,
+          flags: [MessageFlags.Ephemeral],
+        });
       } catch (err) {
-        console.error("Error sending 'MAC_ADDRESS not set' message:", err);
+        console.error("Error sending 'OWNER_DISCORD_ID not set' message:", err);
       }
       return;
     }
 
-    try {
-      const validatedMacAddress = parseMacAddress(macAddressStrEnv);
-
-      wol.wake(validatedMacAddress);
-      const response = `Magic packet sent to ${validatedMacAddress}!`;
-      await message.channel.send(response);
-    } catch (e) {
-      console.error("Failed to process !poweron command:", e);
-
-      let userErrorMessage;
-      if (e.message.toLowerCase().includes("mac address")) {
-        userErrorMessage = `Invalid MAC address format in environment: '${macAddressStrEnv}'. Error: ${e.message}. Expected format: HH:HH:HH:HH:HH:HH or HH-HH-HH-HH-HH-HH.`;
-      } else {
-        userErrorMessage = `Failed to send magic packet to ${macAddressStrEnv}: ${
-          e.message || e
-        }`;
-      }
-
-      try {
-        await message.channel.send(userErrorMessage);
-      } catch (err) {
-        console.error("Error sending error message to Discord:", err);
-      }
+    if (interaction.user.id !== OWNER_DISCORD_ID) {
+      return;
     }
+
+    await handlePowerOnCommand((content) =>
+      interaction.reply({ content, flags: [MessageFlags.Ephemeral] })
+    );
   }
 });
 
