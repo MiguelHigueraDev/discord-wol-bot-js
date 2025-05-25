@@ -11,3 +11,5 @@ Start the bot using
 `node index.js`
 
 and then send the command `!poweron` to the bot. The bot will send the magic packet to the specified address.
+
+I'd recommend running this on a low power device that's connected to the same network as your PC, something like a Raspberry Pi Zero 2 W.
